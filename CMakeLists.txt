@@ -2,21 +2,7 @@
 # Authors: Lorenzo Natale
 # CopyPolicy: Released under the terms of the GNU GPL v2.0.
 
-# New build system. Exploit new cmake 2.6 features (export).
-
-#reduce warning level with cmake 2.6
 cmake_minimum_required(VERSION 3.5)
-
-#cmake policies
-# CMake Policy CMP0020 (Automatically link Qt executables to qtmain
-# target on Windows). Can be removed with
-# CMAKE_MINIMUM_REQUIRED_VERSION 2.8.11 or later.
-if(NOT ${CMAKE_MINIMUM_REQUIRED_VERSION} VERSION_LESS 2.8.11)
-    message(AUTHOR_WARNING "CMake Policy CMP0020 is now NEW by default. You can remove this.")
-endif()
-if(NOT ${CMAKE_VERSION} VERSION_LESS 2.8.11)
-    cmake_policy(SET CMP0020 NEW)
-endif()
 
 project(iCub)
 
@@ -26,7 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(ICUB_COMPILE_BINDINGS "Compile optional language bindings"  FALSE)
 
-find_package(YARP 3.1.100 REQUIRED)
+find_package(YARP 3.2.0 REQUIRED)
 message(STATUS "YARP is version: ${YARP_VERSION}")
 
 if(YARP_math_FOUND)
