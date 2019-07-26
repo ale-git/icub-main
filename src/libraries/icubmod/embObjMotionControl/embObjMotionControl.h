@@ -208,7 +208,7 @@ private:
 
 
     eomc::PidInfo    *                      _trj_pids;
-    //eomc::PidInfo    *                      _dir_pids;
+    eomc::PidInfo    *                      _dir_pids;
     eomc::TrqPidInfo *                      _trq_pids;
     eomc::PidInfo    *                      _cur_pids;
     eomc::PidInfo    *                      _spd_pids;

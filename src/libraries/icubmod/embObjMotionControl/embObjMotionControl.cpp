@@ -103,7 +103,7 @@ bool embObjMotionControl::alloc(int nj)
     _deadzone = allocAndCheck<double>(nj);
     _twofocinfo=allocAndCheck<eomc::twofocSpecificInfo_t>(nj);
     _trj_pids= new eomc::PidInfo[nj];
-    //_dir_pids= new eomc::PidInfo[nj];
+    _dir_pids= new eomc::PidInfo[nj];
     _trq_pids= new eomc::TrqPidInfo [nj];
     _cur_pids= new eomc::PidInfo[nj];
     _spd_pids= new eomc::PidInfo[nj];
@@ -164,8 +164,8 @@ bool embObjMotionControl::dealloc()
     if(_trj_pids)
         delete [] _trj_pids;
 
-    //if(_dir_pids)
-    //    delete [] _dir_pids;
+    if(_dir_pids)
+        delete [] _dir_pids;
 
     if(_trq_pids)
         delete [] _trq_pids;
@@ -220,7 +220,7 @@ embObjMotionControl::embObjMotionControl() :
     _deadzone     = 0;
     opened        = 0;
     _trj_pids     = NULL;
-    //_dir_pids     = NULL;
+    _dir_pids     = NULL;
     _trq_pids     = NULL;
     _cur_pids     = NULL;
     _spd_pids     = NULL;
@@ -753,7 +753,7 @@ bool embObjMotionControl::fromConfig_Step2(yarp::os::Searchable &config)
         if(iMange2focBoards())
             lowLevPidisMandatory = true;
 
-        if(!_mcparser->parsePids(config, _trj_pids/*, _dir_pids*/, _trq_pids, _cur_pids, _spd_pids, lowLevPidisMandatory))
+        if(!_mcparser->parsePids(config, _trj_pids, _dir_pids, _trq_pids, _cur_pids, _spd_pids, lowLevPidisMandatory))
             return false;
 
         // 1) verify joint belonging to same set has same control law
@@ -1211,16 +1211,16 @@ bool embObjMotionControl::init()
 
         jconfig.jntEncoderResolution = _jointEncs[logico].resolution;
         jconfig.jntEncoderType = _jointEncs[logico].type;
-        jconfig.jntEncTolerance = _jointEncs[logico].tolerance;
+        jconfig.jntEncTolerance = (float32_t)_jointEncs[logico].tolerance;
 
-        jconfig.motor_params.bemf_value = _measureConverter->bemf_user2raw(_trq_pids[logico].kbemf, fisico);
+        jconfig.motor_params.bemf_value = (float)_measureConverter->bemf_user2raw(_trq_pids[logico].kbemf, fisico);
         jconfig.motor_params.bemf_scale = 0;
-        jconfig.motor_params.ktau_value = _measureConverter->ktau_user2raw(_trq_pids[logico].ktau, fisico);
+        jconfig.motor_params.ktau_value = (float)_measureConverter->ktau_user2raw(_trq_pids[logico].ktau, fisico);
         jconfig.motor_params.ktau_scale = 0;
 
-        jconfig.gearbox_E2J = _gearbox_E2J[logico];
+        jconfig.gearbox_E2J = (float32_t)_gearbox_E2J[logico];
         
-        jconfig.deadzone = _measureConverter->posA2E(_deadzone[logico], fisico);
+        jconfig.deadzone = (float32_t)_measureConverter->posA2E(_deadzone[logico], fisico);
 
         jconfig.tcfiltertype=_trq_pids[logico].filterType;
 
@@ -1251,12 +1251,12 @@ bool embObjMotionControl::init()
         protid = eoprot_ID_get(eoprot_endpoint_motioncontrol, eoprot_entity_mc_motor, fisico, eoprot_tag_mc_motor_config);
         eOmc_motor_config_t motor_cfg = {0};
         motor_cfg.maxvelocityofmotor = 0;//_maxMotorVelocity[logico]; //unused yet!
-        motor_cfg.currentLimits.nominalCurrent = _currentLimits[logico].nominalCurrent;
-        motor_cfg.currentLimits.overloadCurrent = _currentLimits[logico].overloadCurrent;
-        motor_cfg.currentLimits.peakCurrent = _currentLimits[logico].peakCurrent;
-        motor_cfg.gearbox_M2J = _gearbox_M2J[logico];
+        motor_cfg.currentLimits.nominalCurrent = (eOmeas_current_t)_currentLimits[logico].nominalCurrent;
+        motor_cfg.currentLimits.overloadCurrent = (eOmeas_current_t)_currentLimits[logico].overloadCurrent;
+        motor_cfg.currentLimits.peakCurrent = (eOmeas_current_t)_currentLimits[logico].peakCurrent;
+        motor_cfg.gearbox_M2J = (eOmeas_current_t)_gearbox_M2J[logico];
         motor_cfg.rotorEncoderResolution = _motorEncs[logico].resolution;
-        motor_cfg.rotEncTolerance = _motorEncs[logico].tolerance;
+        motor_cfg.rotEncTolerance = (eOmeas_current_t)_motorEncs[logico].tolerance;
         motor_cfg.hasHallSensor = _twofocinfo[logico].hasHallSensor;
         motor_cfg.hasRotorEncoder = _twofocinfo[logico].hasRotorEncoder;
         motor_cfg.hasTempSensor = _twofocinfo[logico].hasTempSensor;
@@ -1266,7 +1266,7 @@ bool embObjMotionControl::init()
         motor_cfg.motorPoles = _twofocinfo[logico].motorPoles;
         motor_cfg.rotorIndexOffset = _twofocinfo[logico].rotorIndexOffset;
         motor_cfg.rotorEncoderType = _motorEncs[logico].type;
-        motor_cfg.pwmLimit =_rotorsLimits[logico].pwmMax;
+        motor_cfg.pwmLimit = (eOmeas_pwm_t)_rotorsLimits[logico].pwmMax;
         motor_cfg.limitsofrotor.max = (eOmeas_position_t) S_32(_measureConverter->posA2E(_rotorsLimits[logico].posMax, fisico ));
         motor_cfg.limitsofrotor.min = (eOmeas_position_t) S_32(_measureConverter->posA2E(_rotorsLimits[logico].posMin, fisico ));
         
@@ -2128,7 +2128,7 @@ bool embObjMotionControl::checkMotionDoneRaw(bool *flag)
     *flag=true;
     for(int j=0; j<_njoints; j++)
     {
-        *flag &= ismotiondoneList[j]; // eObool_t can have values only amongst: eobool_true (1) or eobool_false (0).
+        *flag &= (bool)ismotiondoneList[j]; // eObool_t can have values only amongst: eobool_true (1) or eobool_false (0).
     }
     return true;
 }
@@ -2296,7 +2296,7 @@ bool embObjMotionControl::checkMotionDoneRaw(const int n_joint, const int *joint
     bool tot_val = true;
     for(int j=0; j<n_joint; j++)
     {
-        tot_val &= ismotiondoneList[joints[j]];
+        tot_val &= (bool)ismotiondoneList[joints[j]];
     }
 
     *flag = tot_val;

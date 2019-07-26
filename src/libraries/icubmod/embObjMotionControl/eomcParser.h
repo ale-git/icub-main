@@ -56,105 +56,6 @@ namespace yarp {
 //} PidAlgorithmType_t;
 
 
-class Pid_Algorithm
-{
-public:
-    //PidAlgorithmType_t type;
-
-    yarp::dev::PidFeedbackUnitsEnum fbk_PidUnits;
-    yarp::dev::PidOutputUnitsEnum   out_PidUnits;
-    eOmc_ctrl_out_type_t out_type;
-
-    virtual ~Pid_Algorithm(){}
-
-    eOmc_ctrl_out_type_t getOutputType() { return out_type; }
-
-    void setUnits(yarp::dev::PidFeedbackUnitsEnum fu, yarp::dev::PidOutputUnitsEnum ou)
-    {
-        fbk_PidUnits = fu;
-        out_PidUnits = ou;
-    }
-
-    virtual yarp::dev::Pid getPID(int joint) = 0;
-};
-
-
-class Pid_Algorithm_simple: public Pid_Algorithm
-{
-public:
-    yarp::dev::Pid *pid;
-    
-    Pid_Algorithm_simple(int nj, eOmc_ctrl_out_type_t ot)
-    {
-        out_type = ot;
-
-        pid = new yarp::dev::Pid[nj];
-    };
-
-    ~Pid_Algorithm_simple()
-    {
-        if (pid) delete[] pid;
-    };
-
-    yarp::dev::Pid getPID(int joint) override
-    {
-        return pid[joint];
-    }
-};
-
-/*
-class PidAlgorithm_VelocityInnerLoop: public Pid_Algorithm
-{
-public:
-    yarp::dev::Pid *extPid; //pos, trq, velocity
-    //yarp::dev::Pid *innerVelPid;
-    PidAlgorithm_VelocityInnerLoop(int nj)
-    {
-        extPid = new yarp::dev::Pid[nj];
-        //innerVelPid = new yarp::dev::Pid[nj];
-    };
-    ~PidAlgorithm_VelocityInnerLoop()
-    {
-        if(extPid)
-        {
-            delete[]extPid;
-        }
-        //if(innerVelPid)
-        //{
-        //    delete[]innerVelPid;
-        //}
-    }
-
-    eOmc_ctrl_out_type_t getOutputType() override
-    {
-        return eomc_ctrl_out_type_vel;
-    }
-};
-
-
-class PidAlgorithm_CurrentInnerLoop: public Pid_Algorithm
-{
-    public:
-    yarp::dev::Pid *extPid;
-    yarp::dev::Pid *innerCurrLoop;
-    PidAlgorithm_CurrentInnerLoop(int nj)
-    {
-        extPid = allocAndCheck<yarp::dev::Pid>(nj);
-        innerCurrLoop = allocAndCheck<yarp::dev::Pid>(nj);
-    };
-    ~PidAlgorithm_CurrentInnerLoop()
-    {
-        checkAndDestroy(extPid);
-        checkAndDestroy(innerCurrLoop);
-    }
-
-    eOmc_ctrl_out_type_t getOutputType() override
-    {
-        return eomc_ctrl_out_type_cur;
-    }
-};
-*/
-
 class PidInfo
 {
 public:
@@ -173,7 +74,7 @@ public:
     {
         enabled = false;
         //controlLaw = PidAlgo_simple;
-        
+
         out_type = eomc_ctrl_out_type_n_a;
         fbk_PidUnits = yarp::dev::PidFeedbackUnitsEnum::RAW_MACHINE_UNITS;
         out_PidUnits = yarp::dev::PidOutputUnitsEnum::RAW_MACHINE_UNITS;
@@ -195,7 +96,303 @@ public:
     int    filterType;
 };
 
+class ControlLaw
+{
+public:
+    yarp::dev::Pid pid;
+    yarp::dev::Pid bc_pid;
+    bool back_comp_2FOC_speed = false;
 
+    yarp::dev::PidFeedbackUnitsEnum fbk_PidUnits;
+    yarp::dev::PidOutputUnitsEnum   out_PidUnits;
+    eOmc_ctrl_out_type_t            out_type;
+    bool                            compliant = false;
+    bool                            back_compatible = false;
+
+    std::string boardname;
+    std::string controlmode;
+
+    double Kbemf = 0.0;
+    double Ktau = 0.0;
+    int filter_type = 0;
+
+    ControlLaw(std::string& bn, std::string& cm) : boardname(bn), controlmode(cm)
+    {
+    }
+
+    virtual ~ControlLaw() {}
+
+    bool parseParameter(const std::string& key, yarp::os::Bottle& bottle, int joint, yarp::os::Value& value)
+    {
+        yarp::os::Bottle row = bottle.findGroup(key.c_str());
+        
+        if (row.isNull())
+        {
+            yError() << key + " parameter not found for controlmode "+ controlmode +" in board " + boardname + " in bottle " + bottle.toString();
+            
+            return false;
+        }
+        
+        if (joint + 1 >= (int)row.size())
+        {
+            yError() << key + " incorrect number of entries for controlmode " + controlmode + " in board " + boardname + " in bottle " + bottle.toString();
+
+            return false;
+        }
+
+        value = row.get(joint + 1);
+
+        return true;
+    }
+
+    virtual bool parse(yarp::os::Bottle& control_law_bot, const int joint)
+    {
+        if (control_law_bot.isNull())
+        {
+            yError() << controlmode + " not found in board " + boardname + " configuration";
+
+            return false;
+        }
+
+        back_compatible = false;
+        
+        compliant = false;
+
+        // controlLaw
+
+        yarp::os::Bottle cl_bot = control_law_bot.findGroup("controlLaw");
+
+        if (cl_bot.isNull())
+        {
+            yError() << " controlLaw parameter missing for controlmode " + controlmode + " for board " + boardname + " joint " << joint;
+
+            return false;
+        }
+
+        std::string cl = cl_bot.get(1).asString();
+        std::string prefix = "";
+
+        out_type = eomc_ctrl_out_type_pwm;
+
+        if (cl == "minjerk")
+        {
+        }
+        else if (cl == "direct")
+        {
+        }
+        else if (cl == "torque")
+        {
+            compliant = true;
+        }
+        else if (cl == "low_lev_current")
+        {
+        }
+        else if (cl == "low_lev_velocity")
+        {
+        }
+        // legacy
+        else if (cl == "Pid_inPos_outPwm")
+        {
+            back_compatible = true;
+            prefix = "pos_";
+        }
+        else if (cl == "Pid_inTrq_outPwm")
+        {
+            back_compatible = true;
+            prefix = "trq_";
+            compliant = true;
+        }
+        else if (cl == "PidPos_withInnerVelPid")
+        {
+            out_type = eomc_ctrl_out_type_vel;
+            back_comp_2FOC_speed = true;
+            back_compatible = true;
+            prefix = "pos_";
+        }
+        else if (cl == "limitscurrent")
+        {
+            back_compatible = true;
+            prefix = "cur_";
+        }
+        //else if (cl == "PidTrq_withInnerVelPid")
+        //{
+        //}
+
+        // outputType
+
+        yarp::os::Bottle ot_bot = control_law_bot.findGroup("outputType");
+
+        if (!ot_bot.isNull())
+        {
+            std::string ot = ot_bot.get(1).asString();
+
+            if (ot == "pwm")
+            {
+                out_type = eomc_ctrl_out_type_pwm;
+            }
+            else if (ot == "current")
+            {
+                out_type = eomc_ctrl_out_type_cur;
+            }
+            else if (ot == "velocity")
+            {
+                out_type = eomc_ctrl_out_type_vel;
+            }
+            else
+            {
+                yError() << ot + " unknown outputType for controlmode " + controlmode + " for board " + boardname + " joint " << joint;
+
+                return false;
+            }
+        }
+        else
+        {
+            yWarning() << " outputType parameter missing for controlmode " + controlmode + " for board " + boardname + " joint " << joint << ", pwm assumed";
+        }
+
+        // fbkControlUnits
+
+        yarp::os::Bottle cu_bot = control_law_bot.findGroup("fbkControlUnits");
+
+        if (cu_bot.isNull())
+        {
+            yError() <<  " fbkControlUnits parameter missing for controlmode " + controlmode + " for board " + boardname + " joint " << joint;
+        
+            return false;
+        }
+
+        std::string cu = cu_bot.get(1).asString();
+
+        if (cu == "metric_units")
+        {
+            fbk_PidUnits = PidFeedbackUnitsEnum::METRIC;
+        }
+        else if (cu == "machine_units")
+        {
+            fbk_PidUnits = PidFeedbackUnitsEnum::RAW_MACHINE_UNITS;
+        }
+        else
+        {
+            yError() << cu + " unknown fbkControlUnits for controlmode " + controlmode + " for board " + boardname + " joint " << joint;
+            
+            return false;
+        }
+
+        // outputControlUnits
+
+        cu_bot = control_law_bot.findGroup("outputControlUnits");
+
+        if (cu_bot.isNull())
+        {
+            yError() << " outputControlUnits parameter missing for controlmode " + controlmode + " for board " + boardname + " joint " << joint;
+
+            return false;
+        }
+
+        cu = cu_bot.get(1).asString();
+
+        if (cu == "machine_units")
+        {
+            out_PidUnits = PidOutputUnitsEnum::RAW_MACHINE_UNITS;
+        }
+        else if (cu == "dutycycle_percent")
+        {
+            out_PidUnits = PidOutputUnitsEnum::DUTYCYCLE_PWM_PERCENT;
+        }
+        else if (cu == "metric_units")
+        {
+            switch (out_type)
+            {
+                case eomc_ctrl_out_type_pwm:
+                    out_PidUnits = PidOutputUnitsEnum::DUTYCYCLE_PWM_PERCENT;
+                    break;
+                
+                case eomc_ctrl_out_type_cur:
+                    out_PidUnits = PidOutputUnitsEnum::CURRENT_METRIC;
+                    break;
+                    
+                case eomc_ctrl_out_type_vel:
+                    out_PidUnits = PidOutputUnitsEnum::VELOCITY_METRIC;
+                    break;
+            }
+        }
+        else
+        {
+            yError() << cu + " unknown outputControlUnits for controlmode " + controlmode + " for board " + boardname + " joint " << joint;
+            
+            return false;
+        }
+
+        yarp::os::Value param;
+
+        if (!parseParameter(prefix + "kff", control_law_bot, joint, param)) return false;
+        pid.kff = param.asDouble();
+
+        if (!parseParameter(prefix + "kp", control_law_bot, joint, param)) return false;
+        pid.kp = param.asDouble();
+
+        if (!parseParameter(prefix + "kd", control_law_bot, joint, param)) return false;
+        pid.kd = param.asDouble();
+
+        if (!parseParameter(prefix + "maxOutput", control_law_bot, joint, param)) return false;
+        pid.max_output = param.asDouble();
+
+        if (back_comp_2FOC_speed)
+        {
+            if (!parseParameter("vel_kff", control_law_bot, joint, param)) return false;
+            bc_pid.kff = param.asDouble();
+
+            if (!parseParameter("vel_kp", control_law_bot, joint, param)) return false;
+            bc_pid.kp = param.asDouble();
+
+            if (!parseParameter("vel_kd", control_law_bot, joint, param)) return false;
+            bc_pid.kd = param.asDouble();
+
+            if (!parseParameter("vel_maxOutput", control_law_bot, joint, param)) return false;
+            bc_pid.max_output = param.asDouble();
+
+            if (!parseParameter("vel_ki", control_law_bot, joint, param)) return false;
+            bc_pid.ki = param.asDouble();
+
+            if (!parseParameter("vel_maxInt", control_law_bot, joint, param)) return false;
+            bc_pid.max_int = param.asDouble();
+
+            if (!parseParameter("vel_shift", control_law_bot, joint, param)) return false;
+            bc_pid.scale = param.asDouble();
+        }
+
+        if (out_type == eomc_ctrl_out_type_vel) return true;
+
+        if (!parseParameter(prefix + "ki", control_law_bot, joint, param)) return false;
+        pid.ki = param.asDouble();
+        
+        if (!parseParameter(prefix + "shift", control_law_bot, joint, param)) return false;
+        pid.scale = param.asDouble();
+
+        if (!parseParameter(prefix + "maxInt", control_law_bot, joint, param)) return false;
+        pid.max_int = param.asDouble();
+
+        if (!parseParameter(prefix + "stictionUp", control_law_bot, joint, param)) return false;
+        pid.stiction_up_val = param.asDouble();
+
+        if (!parseParameter(prefix + "stictionDown", control_law_bot, joint, param)) return false;
+        pid.stiction_down_val = param.asDouble();
+
+
+        if (!compliant) return true;
+
+        if (!parseParameter(prefix + "kbemf", control_law_bot, joint, param)) return false;
+        Kbemf = param.asDouble();
+
+        if (!parseParameter(prefix + "ktau", control_law_bot, joint, param)) return false;
+        Ktau = param.asDouble();
+
+        if (!parseParameter(prefix + "filterType", control_law_bot, joint, param)) return false;
+        filter_type = param.asInt();
+
+        return true;
+    }
+};
 
 typedef struct
 {
@@ -312,62 +509,24 @@ private:
     std::string _boardname;
     bool _verbosewhenok;
 
-    std::map<std::string, Pid_Algorithm*> minjerkAlgoMap;
-    //std::map<std::string, Pid_Algorithm*> directAlgoMap;
-    std::map<std::string, Pid_Algorithm*> torqueAlgoMap;
-
-    //std::map<std::string, Pid_Algorithm*> currentAlgoMap;
-    //std::map<std::string, Pid_Algorithm*> speedAlgoMap;
-
-    std::vector<std::string> _positionControlLaw;
-    std::vector<std::string> _velocityControlLaw;
-    std::vector<std::string> _mixedControlLaw;
-    //std::vector<std::string> _posDirectControlLaw;
-    //std::vector<std::string> _velDirectControlLaw;
-    std::vector<std::string> _torqueControlLaw;
-    std::vector<std::string> _currentControlLaw;
-    std::vector<std::string> _speedControlLaw;
-
-    double *_kbemf;                             /** back-emf compensation parameter */
-    double *_ktau;                              /** motor torque constant */
-    int * _filterType;
-
-
-
-
+    std::vector<ControlLaw*> positionControlLaw;
+    std::vector<ControlLaw*> velocityControlLaw;
+    std::vector<ControlLaw*> mixedControlLaw;
+    std::vector<ControlLaw*> posDirectControlLaw;
+    std::vector<ControlLaw*> velDirectControlLaw;
+    std::vector<ControlLaw*> torqueControlLaw;
+    std::vector<ControlLaw*> currentControlLaw;
+    std::vector<ControlLaw*> speedControlLaw;
 
     //PID parsing functions
-    bool parseControlsGroup(yarp::os::Searchable &config);
-
-    bool parseSelectedPositionControl(yarp::os::Searchable &config);
-    bool parseSelectedVelocityControl(yarp::os::Searchable &config);
-    bool parseSelectedMixedControl(yarp::os::Searchable &config);
-    //bool parseSelectedPosDirectControl(yarp::os::Searchable &config);
-    //bool parseSelectedVelDirectControl(yarp::os::Searchable &config);
-    bool parseSelectedTorqueControl(yarp::os::Searchable &config);
+    void copyPids(PidInfo* pids, std::vector<ControlLaw*>& controlLaws);
+    void copyPids(TrqPidInfo* pids, std::vector<ControlLaw*>& controlLaws);
+    bool extractGroup(yarp::os::Bottle &input, yarp::os::Bottle &out, const std::string &key1, const std::string &txt, int size, bool mandatory = true);
+    //bool extractGroup(Bottle &input, Bottle &out, const std::string &key1, const std::string &txt, int size, bool mandatory = true);
+    bool parseControlsGroup(yarp::os::Searchable &config, bool lowLevPidisMandatory);
+    bool parseControlLaw(yarp::os::Searchable& config, yarp::os::Bottle& control_group_bot, std::vector<ControlLaw*>& controlLaw, bool mandatory = false);
     
-    bool parseSelectedCurrentPid(yarp::os::Searchable &config, bool pidisMandatory, PidInfo *pids);
-    bool parseSelectedSpeedPid(yarp::os::Searchable &config, bool pidisMandatory, PidInfo *pids);
-
-    bool parsePid_minJerk_outPwm(yarp::os::Bottle &b_pid, std::string controlLaw);
-    bool parsePid_minJerk_outCur(yarp::os::Bottle &b_pid, std::string controlLaw);
-    bool parsePid_minJerk_outVel(yarp::os::Bottle &b_pid, std::string controlLaw);
-
-    //bool parsePid_direct_outPwm(yarp::os::Bottle &b_pid, std::string controlLaw);
-    //bool parsePid_direct_outCur(yarp::os::Bottle &b_pid, std::string controlLaw);
-    //bool parsePid_direct_outVel(yarp::os::Bottle &b_pid, std::string controlLaw);
-
-    bool parsePid_torque_outPwm(yarp::os::Bottle &b_pid, std::string controlLaw);
-    bool parsePid_torque_outCur(yarp::os::Bottle &b_pid, std::string controlLaw);
-    bool parsePid_torque_outVel(yarp::os::Bottle &b_pid, std::string controlLaw);
-
-    bool parsePidsGroup2FOC(yarp::os::Bottle& pidsGroup, Pid myPid[]);
-    bool parsePidsGroupSimple(yarp::os::Bottle& pidsGroup, Pid myPid[]);
-    bool parsePidsGroupExtended(yarp::os::Bottle& pidsGroup, Pid myPid[]);
-    bool parsePidsGroupDeluxe(yarp::os::Bottle& pidsGroup, Pid myPid[]);
-
-    bool parsePidsGroup(yarp::os::Bottle& pidsGroup, yarp::dev::Pid myPid[], std::string prefix);
-    bool getCorrectPidForEachJoint(PidInfo *ppids/*, PidInfo *vpids*/, TrqPidInfo *tpids);
+    //bool getCorrectPidForEachJoint(PidInfo *ppids/*, PidInfo *vpids*/, TrqPidInfo *tpids);
     bool parsePidUnitsType(yarp::os::Bottle &bPid, yarp::dev::PidFeedbackUnitsEnum  &fbk_pidunits, yarp::dev::PidOutputUnitsEnum& out_pidunits);
 
 
@@ -375,7 +534,6 @@ private:
     bool convert(yarp::os::Bottle &bottle, std::vector<double> &matrix, bool &formaterror, int targetsize);
 
     //general utils functions
-    bool extractGroup(yarp::os::Bottle &input, yarp::os::Bottle &out, const std::string &key1, const std::string &txt, int size, bool mandatory=true);
     template <class T>
     bool checkAndSetVectorSize(std::vector<T> &vec, int size, const std::string &funcName)
     {
@@ -397,9 +555,9 @@ public:
     Parser(int numofjoints, std::string boardname);
     ~Parser();
 
-    bool parsePids(yarp::os::Searchable &config, PidInfo *ppids/*, PidInfo *vpids*/, TrqPidInfo *tpids, PidInfo *cpids, PidInfo *spids, bool lowLevPidisMandatory);
+    bool parsePids(yarp::os::Searchable &config, PidInfo *ppids, PidInfo *dpids, TrqPidInfo *tpids, PidInfo *cpids, PidInfo *spids, bool lowLevPidisMandatory);
+    //bool parsePids(yarp::os::Searchable &config, bool lowLevPidisMandatory);
     bool parse2FocGroup(yarp::os::Searchable &config, twofocSpecificInfo_t *twofocinfo);
-    //bool parseCurrentPid(yarp::os::Searchable &config, PidInfo *cpids);//deprecated
     bool parseJointsetCfgGroup(yarp::os::Searchable &config, std::vector<JointsSet> &jsets, std::vector<int> &jointtoset);
     bool parseTimeoutsGroup(yarp::os::Searchable &config, std::vector<timeouts_t> &timeouts, int defaultVelocityTimeout);
     bool parseCurrentLimits(yarp::os::Searchable &config, std::vector<motorCurrentLimits_t> &currLimits);
