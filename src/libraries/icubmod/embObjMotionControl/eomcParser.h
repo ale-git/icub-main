@@ -537,7 +537,7 @@ private:
     bool _verbosewhenok;
 
     std::map<std::string, Pid_Algorithm*> minjerkAlgoMap;
-    //std::map<std::string, Pid_Algorithm*> directAlgoMap;
+    std::map<std::string, Pid_Algorithm*> directAlgoMap;
     std::map<std::string, Pid_Algorithm*> torqueAlgoMap;
 
     //std::map<std::string, Pid_Algorithm*> currentAlgoMap;
@@ -546,8 +546,8 @@ private:
     std::vector<std::string> _positionControlLaw;
     std::vector<std::string> _velocityControlLaw;
     std::vector<std::string> _mixedControlLaw;
-    //std::vector<std::string> _posDirectControlLaw;
-    //std::vector<std::string> _velDirectControlLaw;
+    std::vector<std::string> _posDirectControlLaw;
+    std::vector<std::string> _velDirectControlLaw;
     std::vector<std::string> _torqueControlLaw;
     std::vector<std::string> _currentControlLaw;
     std::vector<std::string> _speedControlLaw;
@@ -571,8 +571,8 @@ private:
     bool parseSelectedPositionControl(yarp::os::Searchable &config);
     bool parseSelectedVelocityControl(yarp::os::Searchable &config);
     bool parseSelectedMixedControl(yarp::os::Searchable &config);
-    //bool parseSelectedPosDirectControl(yarp::os::Searchable &config);
-    //bool parseSelectedVelDirectControl(yarp::os::Searchable &config);
+    bool parseSelectedPosDirectControl(yarp::os::Searchable &config);
+    bool parseSelectedVelDirectControl(yarp::os::Searchable &config);
     bool parseSelectedTorqueControl(yarp::os::Searchable &config);
 
     bool parseSelectedCurrentPid(yarp::os::Searchable &config, bool pidisMandatory, PidInfo *pids);
@@ -582,9 +582,9 @@ private:
     bool parsePid_minJerk_outCur(yarp::os::Bottle &b_pid, std::string controlLaw);
     bool parsePid_minJerk_outVel(yarp::os::Bottle &b_pid, std::string controlLaw);
 
-    //bool parsePid_direct_outPwm(yarp::os::Bottle &b_pid, std::string controlLaw);
-    //bool parsePid_direct_outCur(yarp::os::Bottle &b_pid, std::string controlLaw);
-    //bool parsePid_direct_outVel(yarp::os::Bottle &b_pid, std::string controlLaw);
+    bool parsePid_direct_outPwm(yarp::os::Bottle &b_pid, std::string controlLaw);
+    bool parsePid_direct_outCur(yarp::os::Bottle &b_pid, std::string controlLaw);
+    bool parsePid_direct_outVel(yarp::os::Bottle &b_pid, std::string controlLaw);
 
     bool parsePid_torque_outPwm(yarp::os::Bottle &b_pid, std::string controlLaw);
     bool parsePid_torque_outCur(yarp::os::Bottle &b_pid, std::string controlLaw);
@@ -596,7 +596,7 @@ private:
     bool parsePidsGroupDeluxe(yarp::os::Bottle& pidsGroup, Pid myPid[]);
 
     bool parsePidsGroup(yarp::os::Bottle& pidsGroup, yarp::dev::Pid myPid[], std::string prefix);
-    bool getCorrectPidForEachJoint(PidInfo *ppids/*, PidInfo *vpids*/, TrqPidInfo *tpids);
+    bool getCorrectPidForEachJoint(PidInfo *ppids, PidInfo *vpids, TrqPidInfo *tpids);
     bool parsePidUnitsType(yarp::os::Bottle &bPid, yarp::dev::PidFeedbackUnitsEnum  &fbk_pidunits, yarp::dev::PidOutputUnitsEnum& out_pidunits);
 
     bool checkJointTypes(PidInfo *pids, const std::string &pid_type);
@@ -628,7 +628,7 @@ public:
     Parser(int numofjoints, std::string boardname);
     ~Parser();
 
-    bool parsePids(yarp::os::Searchable &config, PidInfo *ppids/*, PidInfo *vpids*/, TrqPidInfo *tpids, PidInfo *cpids, PidInfo *spids, bool lowLevPidisMandatory);
+    bool parsePids(yarp::os::Searchable &config, PidInfo *ppids, PidInfo *vpids, TrqPidInfo *tpids, PidInfo *cpids, PidInfo *spids, bool lowLevPidisMandatory);
     bool parseFocGroup(yarp::os::Searchable &config, focBasedSpecificInfo_t *foc_based_info, std::string groupName, std::vector<std::unique_ptr<eomc::ITemperatureSensor>>& temperatureSensorsVector);
     //bool parseCurrentPid(yarp::os::Searchable &config, PidInfo *cpids);//deprecated
     bool parseJointsetCfgGroup(yarp::os::Searchable &config, std::vector<JointsSet> &jsets, std::vector<int> &jointtoset);

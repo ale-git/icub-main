@@ -43,8 +43,8 @@ yarp::dev::eomc::Parser::Parser(int numofjoints, string boardname)
     _positionControlLaw.resize(0);
     _velocityControlLaw.resize(0);
     _mixedControlLaw.resize(0);
-    //_posDirectControlLaw.resize(0);
-    //_velDirectControlLaw.resize(0);
+    _posDirectControlLaw.resize(0);
+    _velDirectControlLaw.resize(0);
     _torqueControlLaw.resize(0);
     _currentControlLaw.resize(0);
     _speedControlLaw.resize(0);
@@ -59,7 +59,7 @@ yarp::dev::eomc::Parser::Parser(int numofjoints, string boardname)
     _velocityThres=allocAndCheck<double>(_njoints);
 
     minjerkAlgoMap.clear();
-    //directAlgoMap.clear();
+    directAlgoMap.clear();
     torqueAlgoMap.clear();
 };
 
@@ -76,7 +76,7 @@ Parser::~Parser()
 }
 
 
-bool Parser::parsePids(yarp::os::Searchable &config, PidInfo *ppids/*, PidInfo *vpids*/, TrqPidInfo *tpids, PidInfo *cpids, PidInfo *spids, bool lowLevPidisMandatory)
+bool Parser::parsePids(yarp::os::Searchable &config, PidInfo *ppids, PidInfo *vpids, TrqPidInfo *tpids, PidInfo *cpids, PidInfo *spids, bool lowLevPidisMandatory)
 {
     // compila la lista con i tag dei pid per ciascun modo 
     // di controllo per ciascun giunto 
@@ -118,13 +118,13 @@ bool Parser::parsePids(yarp::os::Searchable &config, PidInfo *ppids/*, PidInfo *
 
     // usa _posDirectControlLaw per recuperare i PID
     // del position direct control per ogni giunto
-    //if(!parseSelectedPosDirectControl(config)) // OK
-    //    return false;
+    if(!parseSelectedPosDirectControl(config)) // OK
+        return false;
 
     // usa _velDirectControlLaw per recuperare i PID
     // del velocity direct control per ogni giunto
-    //if(!parseSelectedVelDirectControl(config)) // OK
-    //    return false;
+    if(!parseSelectedVelDirectControl(config)) // OK
+        return false;
 
     // usa _torqueControlLaw per recuperare i PID
     // del torque control per ogni giunto
@@ -133,7 +133,7 @@ bool Parser::parsePids(yarp::os::Searchable &config, PidInfo *ppids/*, PidInfo *
 
 
 
-    if(!getCorrectPidForEachJoint(ppids/*, vpids*/, tpids))
+    if(!getCorrectPidForEachJoint(ppids, vpids, tpids))
         return false;
 
 
@@ -165,13 +165,13 @@ bool Parser::parseControlsGroup(yarp::os::Searchable &config) // OK
         return false;
     LOAD_STRINGS(_mixedControlLaw, xtmp);
 
-    //if (!extractGroup(controlsGroup, xtmp, "posDirectControl", "Position Direct Control ", _njoints)) 
-    //    return false;
-    //LOAD_STRINGS(_posDirectControlLaw, xtmp);
+    if (!extractGroup(controlsGroup, xtmp, "posDirectControl", "Position Direct Control ", _njoints)) 
+        return false;
+    LOAD_STRINGS(_posDirectControlLaw, xtmp);
 
-    //if (!extractGroup(controlsGroup, xtmp, "velDirectControl", "Velocity Direct Control ", _njoints)) 
-    //    return false;
-    //LOAD_STRINGS(_velDirectControlLaw, xtmp);
+    if (!extractGroup(controlsGroup, xtmp, "velDirectControl", "Velocity Direct Control ", _njoints)) 
+        return false;
+    LOAD_STRINGS(_velDirectControlLaw, xtmp);
 
     if (!extractGroup(controlsGroup, xtmp, "torqueControl", "Torque Control ", _njoints))
         return false;
@@ -547,7 +547,7 @@ bool Parser::parseSelectedMixedControl(yarp::os::Searchable &config) // OK
     return true;
 
 }
-#if 0
+
 bool Parser::parseSelectedPosDirectControl(yarp::os::Searchable &config) // OK
 {
     for (int i = 0; i<_njoints; i++)
@@ -691,7 +691,6 @@ bool Parser::parseSelectedVelDirectControl(yarp::os::Searchable &config) // OK
     return true;
 
 }
-#endif
 
 bool Parser::parseSelectedTorqueControl(yarp::os::Searchable &config) // OK
 {
@@ -1088,7 +1087,6 @@ bool Parser::parsePid_minJerk_outVel(Bottle &b_pid, string controlLaw)
     return true;
 }
 
-/*
 bool Parser::parsePid_direct_outPwm(Bottle &b_pid, string controlLaw)
 {
     if (directAlgoMap.find(controlLaw) != directAlgoMap.end()) return true;
@@ -1106,8 +1104,7 @@ bool Parser::parsePid_direct_outPwm(Bottle &b_pid, string controlLaw)
 
     return true;
 }
-*/
-/*
+
 bool Parser::parsePid_direct_outCur(Bottle &b_pid, string controlLaw)
 {
     if (directAlgoMap.find(controlLaw) != directAlgoMap.end()) return true;
@@ -1143,7 +1140,7 @@ bool Parser::parsePid_direct_outVel(Bottle &b_pid, string controlLaw)
 
     return true;
 }
-*/
+
 bool Parser::parsePid_torque_outPwm(Bottle &b_pid, string controlLaw)
 {
     if (torqueAlgoMap.find(controlLaw) != torqueAlgoMap.end()) return true;
@@ -1198,15 +1195,15 @@ bool Parser::parsePid_torque_outVel(Bottle &b_pid, string controlLaw)
     return true;
 }
 
-bool Parser::getCorrectPidForEachJoint(PidInfo *ppids/*, PidInfo *vpids*/, TrqPidInfo *tpids)
+bool Parser::getCorrectPidForEachJoint(PidInfo *ppids, PidInfo *vpids, TrqPidInfo *tpids)
 {
     Pid_Algorithm *minjerkAlgo_ptr = NULL;
-    //Pid_Algorithm *directAlgo_ptr = NULL;
+    Pid_Algorithm *directAlgo_ptr = NULL;
     Pid_Algorithm *torqueAlgo_ptr = NULL;
 
     //since some joints could not have all pid configured, reset pid values to 0.
     memset(ppids, 0, sizeof(PidInfo)*_njoints);
-    //memset(vpids, 0, sizeof(PidInfo)*_njoints);
+    memset(vpids, 0, sizeof(PidInfo)*_njoints);
     memset(tpids, 0, sizeof(TrqPidInfo)*_njoints);
 
     map<string, Pid_Algorithm*>::iterator it;
@@ -1231,7 +1228,6 @@ bool Parser::getCorrectPidForEachJoint(PidInfo *ppids/*, PidInfo *vpids*/, TrqPi
         ppids[i].usernamePidSelected = _positionControlLaw[i];
         ppids[i].enabled = true;
 
-        /*
         //get velocity pid
         if (_posDirectControlLaw[i] == "none")
         {
@@ -1264,7 +1260,6 @@ bool Parser::getCorrectPidForEachJoint(PidInfo *ppids/*, PidInfo *vpids*/, TrqPi
             vpids[i].enabled = false;
             vpids[i].usernamePidSelected = "none";
         }
-        */
 
         //get torque pid
         if (_torqueControlLaw[i] == "none")
